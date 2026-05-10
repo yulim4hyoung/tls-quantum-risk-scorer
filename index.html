@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TLS Quantum Risk Scorer</title>
+<style>
+  :root {
+    --low:    #16a34a;
+    --mid:    #d97706;
+    --high:   #dc2626;
+    --accent: #2563eb;
+    --bg:     #f1f5f9;
+    --card:   #ffffff;
+    --border: #cbd5e1;
+    --text:   #1e293b;
+    --muted:  #64748b;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px 16px;
+  }
+
+  .header {
+    text-align: center;
+    margin-bottom: 32px;
+  }
+  .header h1 {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin-bottom: 6px;
+  }
+  .header p {
+    color: var(--muted);
+    font-size: 0.88rem;
+  }
+  .badge {
+    display: inline-block;
+    background: #dbeafe;
+    color: #1d4ed8;
+    font-size: 0.72rem;
+    padding: 2px 8px;
+    border-radius: 999px;
+    margin-top: 6px;
+    letter-spacing: 0.04em;
+  }
+
+  .container {
+    max-width: 920px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+
+  @media (max-width: 680px) {
+    .container { grid-template-columns: 1fr; }
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+  }
+
+  .card-title {
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-bottom: 16px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .field { margin-bottom: 14px; }
+  .field label {
+    display: block;
+    font-size: 0.83rem;
+    color: var(--muted);
+    margin-bottom: 5px;
+  }
+  .field label strong { color: var(--text); }
+
+  select, input[type="number"] {
+    width: 100%;
+    background: #f8fafc;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    color: var(--text);
+    padding: 8px 10px;
+    font-size: 0.88rem;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  select:focus, input[type="number"]:focus {
+    border-color: var(--accent);
+  }
+
+  .slider-wrap { display: flex; align-items: center; gap: 10px; }
+  .slider-wrap input[type="range"] {
+    flex: 1;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+  .slider-val {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--accent);
+    min-width: 36px;
+    text-align: right;
+  }
+
+  .result-card {
+    grid-column: 1 / -1;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+  }
+
+  .score-hero {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+  }
+
+  .gauge-wrap {
+    flex-shrink: 0;
+    width: 120px;
+    height: 120px;
+    position: relative;
+  }
+  .gauge-wrap svg { width: 100%; height: 100%; filter: drop-shadow(0 2px 6px rgba(0,0,0,0.08)); }
+  .gauge-text {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  .gauge-score {
+    font-size: 2rem;
+    font-weight: 800;
+    line-height: 1;
+  }
+  .gauge-label {
+    font-size: 0.72rem;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  .score-meta { flex: 1; min-width: 180px; }
+  .risk-badge {
+    display: inline-block;
+    padding: 4px 14px;
+    border-radius: 999px;
+    font-size: 0.88rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .risk-LOW  { background: #dcfce7; color: #15803d; }
+  .risk-MID  { background: #fef3c7; color: #b45309; }
+  .risk-HIGH { background: #fee2e2; color: #b91c1c; }
+
+  .score-meta p { font-size: 0.83rem; color: var(--muted); line-height: 1.5; }
+
+  .layers {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+  .layer-block {
+    background: #f8fafc;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  .layer-name {
+    font-size: 0.72rem;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .layer-score {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .layer-score { transition: color 0.25s ease; }
+
+  /* Dynamic badge container below input */
+  .input-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    min-height: 0;
+    margin-top: 5px;
+    transition: all 0.2s;
+  }
+
+  /* Layer tag badge */
+  .ltag {
+    display: inline-block;
+    font-size: 0.66rem;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 4px;
+    margin-left: 5px;
+    vertical-align: middle;
+    letter-spacing: 0.02em;
+  }
+  .ltag-l1  { background: #dbeafe; color: #1d4ed8; }
+  .ltag-l2a { background: #fef9c3; color: #a16207; }
+  .ltag-l2b { background: #fce7f3; color: #be185d; }
+  .ltag-l2c { background: #dcfce7; color: #15803d; }
+  .ltag-l3  { background: #ffedd5; color: #c2410c; }
+  .ltag-m   { background: #eff6ff; color: #2563eb; }
+
+  /* Layer block pulse */
+  @keyframes layerPulse {
+    0%   { box-shadow: 0 0 0 3px #93c5fd; }
+    100% { box-shadow: 0 0 0 0px transparent; }
+  }
+  .layer-block.flash { animation: layerPulse 0.65s ease-out forwards; }
+  .layer-sub {
+    font-size: 0.72rem;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+  .layer-block-hndl {
+    border-color: #bfdbfe;
+    background: #eff6ff;
+  }
+
+  .formula-row {
+    font-size: 0.8rem;
+    color: var(--muted);
+    background: #f1f5f9;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 10px 14px;
+    margin-bottom: 4px;
+    font-family: monospace;
+    word-break: break-all;
+  }
+  .formula-row span { color: var(--text); }
+  .formula-note {
+    font-size: 0.73rem;
+    color: var(--muted);
+    margin-bottom: 16px;
+    padding-left: 4px;
+  }
+
+  .advice { border-top: 1px solid var(--border); padding-top: 16px; }
+  .advice-title {
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+  .advice ul { list-style: none; }
+  .advice ul li {
+    font-size: 0.83rem;
+    padding: 4px 0;
+    color: #475569;
+    display: flex;
+    gap: 8px;
+  }
+  .advice ul li::before { content: '›'; color: var(--accent); flex-shrink: 0; }
+
+  .m-block {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 7px;
+    padding: 6px 12px;
+    font-size: 0.83rem;
+    margin-bottom: 16px;
+  }
+  .m-val { font-weight: 700; color: var(--accent); }
+
+  .m-formula {
+    font-family: monospace;
+    font-size: 0.82rem;
+    color: var(--muted);
+    background: #f8fafc;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 7px 12px;
+    margin-top: 8px;
+    line-height: 1.9;
+  }
+  .m-formula .f-h    { color: var(--accent); font-weight: 700; }
+  .m-formula .f-step { color: var(--text); }
+  .m-formula .f-result { font-weight: 700; font-size: 0.95rem; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>TLS Quantum Risk Scorer</h1>
+  <p>Layered Risk Scoring for Post-Quantum TLS</p>
+  <!-- <span class="badge">2026 부채널 정보분석 경진대회</span> -->
+</div>
+
+<div class="container">
+
+  <!-- Input: TLS Parameters -->
+  <div class="card">
+    <div class="card-title">TLS Connection Parameters</div>
+
+    <div class="field">
+      <label><strong>TLS Version</strong></label>
+      <select id="tlsVer" onchange="syncPqcKex();calc()">
+        <option value="1.3">TLS 1.3</option>
+        <option value="1.2-ecdhe">TLS 1.2 (ECDHE)</option>
+        <option value="1.2-rsa">TLS 1.2 (RSA)</option>
+        <option value="1.2-pqc">TLS 1.2 (PQC Hybrid)</option>
+        <option value="1.1">TLS 1.1</option>
+        <option value="1.0">TLS 1.0</option>
+      </select>
+      <div class="input-badges" id="ib-tlsVer"></div>
+    </div>
+
+    <div class="field">
+      <label><strong>Cipher Suite</strong></label>
+      <select id="cipher" onchange="calc()">
+        <option value="aes128">AES-128 (e.g. AES_128_GCM_SHA256)</option>
+        <option value="aes256">AES-256 (e.g. AES_256_GCM_SHA384)</option>
+        <option value="other">Other</option>
+      </select>
+      <div class="input-badges" id="ib-cipher"></div>
+    </div>
+
+    <div class="field">
+      <label><strong>PQC Key Exchange</strong></label>
+      <select id="pqcKex" onchange="calc()">
+        <option value="none">None (not applied)</option>
+        <option value="level1">Level-1 (ML-KEM-512, etc.)</option>
+        <option value="level3plus">Level-3+ (ML-KEM-768, etc.)</option>
+      </select>
+      <div class="input-badges" id="ib-pqcKex"></div>
+    </div>
+
+    <div class="field">
+      <label>
+        <strong>Connection Type</strong>
+        <span style="color:var(--muted);font-size:0.8rem"> (Exposure scope e, L2a)</span>
+      </label>
+      <select id="connType" onchange="calc()">
+        <option value="internet">Internet / Port 443 &nbsp;(e = 1.0)</option>
+        <option value="internal">Internal / Non-standard Port &nbsp;(e = 0.5)</option>
+        <option value="local">Local / Private IP &nbsp;(e = 0.25)</option>
+      </select>
+      <div class="input-badges" id="ib-connType"></div>
+    </div>
+
+    <div class="field">
+      <label><strong>Certificate Status</strong></label>
+      <select id="certStatus" onchange="updateCertDays()">
+        <option value="ok">Valid (30+ days remaining)</option>
+        <option value="imminent">Expiring Soon (&lt; 30 days)</option>
+        <option value="expired">Expired</option>
+        <option value="unknown">Certificate Info Unavailable</option>
+      </select>
+      <div class="input-badges" id="ib-cert"></div>
+    </div>
+
+    <div class="field" id="certDaysField" style="display:none">
+      <label><strong>Days Remaining</strong> (0–29)</label>
+      <input type="number" id="certDays" min="0" max="29" value="15" oninput="calc()">
+    </div>
+
+    <div class="field">
+      <label>
+        <strong>HNDL Threat Horizon (h)</strong>
+        <span style="color:var(--muted);font-size:0.8rem"> (Confidential data retention period · Expected quantum threat timeline)</span>
+      </label>
+      <div class="slider-wrap">
+        <input type="range" id="hndlYears" min="0" max="20" value="10" oninput="syncSlider('hndlYears','hndlYearsVal');calc()">
+        <span class="slider-val" id="hndlYearsVal">10 yr</span>
+      </div>
+      <div class="m-formula">
+        M &nbsp;= 1.0 + ( <span class="f-h" id="mfH">10</span> / 20.0 )<br>
+        &nbsp;&nbsp;&nbsp;= 1.0 + <span class="f-step" id="mfStep">0.50</span><br>
+        &nbsp;&nbsp;&nbsp;= <span class="f-result" id="mfResult">1.50</span>
+      </div>
+      <div class="input-badges" id="ib-hndl"></div>
+    </div>
+  </div>
+
+  <!-- Input: Environmental Correction Multiplier -->
+  <div class="card">
+    <div class="card-title">Environmental Correction Multiplier <span style="text-transform:none">(m)</span> per Layer</div>
+
+    <div class="field">
+      <label>
+        <strong>L1</strong>
+        <span class="ltag ltag-l1">TLS Protocol</span>
+      </label>
+      <select id="mL1" onchange="calc()">
+        <option value="0.6">HSTS enforced + Certificate Pinning &nbsp;(m = 0.6)</option>
+        <option value="0.8">HSTS applied &nbsp;(m = 0.8)</option>
+        <option value="1.0" selected>Default (no correction) &nbsp;(m = 1.0)</option>
+        <option value="1.2">No TLS downgrade monitoring &nbsp;(m = 1.2)</option>
+        <option value="1.4">Legacy client allowed (mixed environment) &nbsp;(m = 1.4)</option>
+      </select>
+      <div class="input-badges" id="ib-mL1"></div>
+    </div>
+
+    <div class="field">
+      <label>
+        <strong>L2a</strong>
+        <span class="ltag ltag-l2a">Key Exchange</span>
+      </label>
+      <select id="mL2a" onchange="calc()">
+        <option value="0.6">HSM used + key rotation ≤ 90 days &nbsp;(m = 0.6)</option>
+        <option value="0.8">Key rotation policy ≤ 90 days &nbsp;(m = 0.8)</option>
+        <option value="1.0" selected>Default (no correction) &nbsp;(m = 1.0)</option>
+        <option value="1.3">No key rotation for 1+ year &nbsp;(m = 1.3)</option>
+        <option value="1.5">Key compromise history &nbsp;(m = 1.5)</option>
+      </select>
+      <div class="input-badges" id="ib-mL2a"></div>
+    </div>
+
+    <div class="field">
+      <label>
+        <strong>L2b</strong>
+        <span class="ltag ltag-l2b">AES-128 Grover</span>
+      </label>
+      <select id="mL2b" onchange="calc()">
+        <option value="0.7">Short session + strong KDF (HKDF, etc.) &nbsp;(m = 0.7)</option>
+        <option value="0.8">Additional encryption layer (double encryption) &nbsp;(m = 0.8)</option>
+        <option value="1.0" selected>Default (no correction) &nbsp;(m = 1.0)</option>
+        <option value="1.2">No KDF / weak key derivation &nbsp;(m = 1.2)</option>
+        <option value="1.4">Static key + no session renewal &nbsp;(m = 1.4)</option>
+      </select>
+      <div class="input-badges" id="ib-mL2b"></div>
+    </div>
+
+    <div class="field">
+      <label>
+        <strong>L2c</strong>
+        <span class="ltag ltag-l2c">PQC Level-1</span>
+      </label>
+      <select id="mL2c" onchange="calc()">
+        <option value="0.6">Constant-time implementation verified &nbsp;(m = 0.6)</option>
+        <option value="0.7">Level-3 migration plan within 6 months &nbsp;(m = 0.7)</option>
+        <option value="0.8">Audited PQC library used &nbsp;(m = 0.8)</option>
+        <option value="0.9">Migration under review &nbsp;(m = 0.9)</option>
+        <option value="1.0" selected>Default (no correction) &nbsp;(m = 1.0)</option>
+        <option value="1.3">Unverified custom PQC implementation &nbsp;(m = 1.3)</option>
+        <option value="1.5">Implementation with known side-channel vulnerability &nbsp;(m = 1.5)</option>
+      </select>
+      <div class="input-badges" id="ib-mL2c"></div>
+    </div>
+
+    <div class="field">
+      <label>
+        <strong>PQC Level-1 Vulnerability Flag</strong>
+        <span style="color:var(--muted);font-size:0.8rem"> (Conservative Assessment Mode)</span>
+      </label>
+      <select id="pqcLevel1Vuln" onchange="calc()">
+        <option value="1">Enabled (Conservative)</option>
+        <option value="0">Disabled</option>
+      </select>
+      <div class="input-badges" id="ib-pqcL1"></div>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div class="result-card">
+    <div class="card-title">Risk Assessment Results</div>
+
+    <div class="score-hero">
+      <div class="gauge-wrap">
+        <svg viewBox="0 0 36 36">
+          <circle cx="18" cy="18" r="15.9" fill="none" stroke="#e2e8f0" stroke-width="3"/>
+          <circle id="gaugeCircle" cx="18" cy="18" r="15.9" fill="none"
+            stroke="#22c55e" stroke-width="3"
+            stroke-dasharray="0 100"
+            stroke-dashoffset="25"
+            stroke-linecap="round"
+            transform="rotate(-90 18 18)"
+            style="transition:all 0.4s ease"/>
+        </svg>
+        <div class="gauge-text">
+          <span class="gauge-score" id="scoreNum" style="color:#22c55e">0</span>
+          <span class="gauge-label">/ 100</span>
+        </div>
+      </div>
+
+      <div class="score-meta">
+        <span class="risk-badge risk-LOW" id="riskBadge">Low Risk</span>
+        <p id="riskDesc">The current TLS connection is relatively safe against quantum threats.</p>
+      </div>
+    </div>
+
+    <div class="layers">
+      <div class="layer-block" id="lb-l1">
+        <div class="layer-name"><strong>L1</strong><br>: TLS Protocol</div>
+        <div class="layer-score" id="l1s" style="color:#94a3b8">0.0</div>
+        <div class="layer-sub">T·E·<strong>m</strong></div>
+      </div>
+      <div class="layer-block" id="lb-l2a">
+        <div class="layer-name"><strong>L2a</strong><br>: Key Exchange</div>
+        <div class="layer-score" id="l2as" style="color:#94a3b8">0.0</div>
+        <div class="layer-sub">T·E·<strong>e</strong>·<strong>m</strong></div>
+      </div>
+      <div class="layer-block" id="lb-l2b">
+        <div class="layer-name"><strong>L2b</strong><br>: AES-128 Grover</div>
+        <div class="layer-score" id="l2bs" style="color:#94a3b8">0.0</div>
+        <div class="layer-sub">T·E·<strong>m</strong></div>
+      </div>
+      <div class="layer-block" id="lb-l2c">
+        <div class="layer-name"><strong>L2c</strong><br>: PQC Level-1</div>
+        <div class="layer-score" id="l2cs" style="color:#94a3b8">0.0</div>
+        <div class="layer-sub">T·E·<strong>m</strong></div>
+      </div>
+      <div class="layer-block" id="lb-l3">
+        <div class="layer-name"><strong>L3</strong><br>: Cert. Expiry</div>
+        <div class="layer-score" id="l3s" style="color:#94a3b8">0.0</div>
+        <div class="layer-sub">Expiry-based (m not applied)</div>
+      </div>
+      <div class="layer-block layer-block-hndl" id="lb-hndl">
+        <div class="layer-name"><strong>HNDL Multiplier M</strong><br>&nbsp;</div>
+        <div class="layer-score" id="mVal" style="color:var(--accent)">1.50</div>
+        <div class="layer-sub">h = <span id="hVal">10</span> yr</div>
+      </div>
+    </div>
+
+    <div class="formula-row" id="formulaRow">
+      Score = (L1 + L2a + L2b + L2c + L3) × M / 118 × 100
+    </div>
+    <p class="formula-note">※ 118 = practical upper bound under TLS 1.0 + RSA + AES-128 + expired cert + max m + M=2.0 (h=20 yr)</p>
+
+    <div class="advice">
+      <div class="advice-title">Recommendations</div>
+      <ul id="adviceList"></ul>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const RISK_MAX = 118;
+
+function syncSlider(id, valId) {
+  const v = parseFloat(document.getElementById(id).value);
+  const el = document.getElementById(valId);
+  if (id === 'hndlYears') el.textContent = v + ' yr';
+  else el.textContent = v.toFixed(2);
+}
+
+function updateCertDays() {
+  const st = document.getElementById('certStatus').value;
+  document.getElementById('certDaysField').style.display =
+    st === 'imminent' ? 'block' : 'none';
+  calc();
+}
+
+function calc() {
+  const tlsVer   = document.getElementById('tlsVer').value;
+  const cipher   = document.getElementById('cipher').value;
+  const pqcKex   = document.getElementById('pqcKex').value;
+  const connType = document.getElementById('connType').value;
+  const certSt   = document.getElementById('certStatus').value;
+  const certDays = parseInt(document.getElementById('certDays').value) || 15;
+  const h      = parseFloat(document.getElementById('hndlYears').value);
+  const mL1    = parseFloat(document.getElementById('mL1').value);
+  const mL2a   = parseFloat(document.getElementById('mL2a').value);
+  const mL2b   = parseFloat(document.getElementById('mL2b').value);
+  const mL2c   = parseFloat(document.getElementById('mL2c').value);
+  const pqcL1V = document.getElementById('pqcLevel1Vuln').value === '1';
+
+  // ── L1 ──────────────────────────────────────────────────────────────
+  const T_proto = 3.0;
+  let E_proto = 0;
+  if      (tlsVer === '1.0')        E_proto = 5.0;
+  else if (tlsVer === '1.1')        E_proto = 4.0;
+  else if (tlsVer === '1.2-rsa')    E_proto = 2.0;
+  else if (tlsVer === '1.2-ecdhe')  E_proto = 1.5;
+  else if (tlsVer === '1.2-pqc')    E_proto = 1.0;
+  else if (tlsVer === '1.3') {
+    E_proto = (pqcKex !== 'none') ? 1.0 : 0.0;
+  }
+  const l1 = T_proto * E_proto * mL1;
+
+  // ── L2a ─────────────────────────────────────────────────────────────
+  let l2a = 0;
+  const hasClassicVuln = ['1.2-rsa','1.2-ecdhe','1.0','1.1'].includes(tlsVer) ||
+                          (tlsVer === '1.3' && pqcKex === 'none');
+  if (hasClassicVuln) {
+    const e = connType === 'internet' ? 1.0 : connType === 'internal' ? 0.5 : 0.25;
+    const usesRsa = (tlsVer === '1.2-rsa');
+    const T = 4.0;
+    const E = usesRsa ? 5.0 : 3.0;
+    l2a = T * E * e * mL2a;
+  }
+
+  // ── L2b ─────────────────────────────────────────────────────────────
+  const l2b = cipher === 'aes128' ? (4.0 * 0.5 * mL2b) : 0;
+
+  // ── L2c ─────────────────────────────────────────────────────────────
+  let l2c = 0;
+  const isPqcHybrid = pqcKex !== 'none';
+  const isPqcLevel1 = pqcKex === 'level1';
+  if (isPqcHybrid && isPqcLevel1 && pqcL1V) {
+    l2c = 3.0 * 2.0 * mL2c;
+  }
+
+  // ── L3 ──────────────────────────────────────────────────────────────
+  let l3 = 0;
+  if (certSt === 'expired')  l3 = 5.0;
+  else if (certSt === 'imminent') {
+    const days = Math.max(0, Math.min(29, certDays));
+    l3 = 5.0 * (30 - days) / 30;
+  } else if (certSt === 'ok') {
+    l3 = 0;
+  }
+
+  // ── M & final ────────────────────────────────────────────────────────
+  const M = Math.min(2.0, 1.0 + h / 20);
+  const rawSum = l1 + l2a + l2b + l2c + l3;
+  const rawScore = rawSum * M;
+  const score = Math.min(100, Math.round((rawScore / RISK_MAX) * 100));
+
+  // ── Update UI ─────────────────────────────────────────────────────
+  const color = score >= 70 ? '#ef4444' : score >= 30 ? '#f59e0b' : '#22c55e';
+
+  document.getElementById('scoreNum').textContent = score;
+  document.getElementById('scoreNum').style.color = color;
+  const circ = document.getElementById('gaugeCircle');
+  circ.style.stroke = color;
+  circ.setAttribute('stroke-dasharray', score + ' ' + (100 - score));
+
+  document.getElementById('mVal').textContent = M.toFixed(2);
+  document.getElementById('hVal').textContent = h;
+
+  document.getElementById('mfH').textContent = h;
+  document.getElementById('mfStep').textContent = (h / 20).toFixed(2);
+  document.getElementById('mfResult').textContent = M.toFixed(2);
+  document.getElementById('mfResult').style.color = color;
+
+  const GREEN = '#16a34a', AMBER = '#d97706', RED = '#dc2626', ZERO = '#94a3b8';
+  function layerColor(val, layer, extra) {
+    if (val === 0) return ZERO;
+    if (layer === 'l1')  return extra.E <= 1.5 ? AMBER : RED;
+    if (layer === 'l2a') {
+      const Ee = extra.Ee;
+      if (Ee <= 0.75) return GREEN;
+      return Ee >= 5.0 ? RED : AMBER;
+    }
+    if (layer === 'l2b') return AMBER;
+    if (layer === 'l2c') return val >= 6.0 ? RED : AMBER;
+    if (layer === 'l3')  return val >= 5.0 ? RED : val > 1 ? AMBER : GREEN;
+    return AMBER;
+  }
+
+  const e_val = connType === 'internet' ? 1.0 : connType === 'internal' ? 0.5 : 0.25;
+  const E_l2a = (tlsVer === '1.2-rsa') ? 5.0 : 3.0;
+  const layerIds   = ['l1s','l2as','l2bs','l2cs','l3s'];
+  const layerKeys  = ['l1','l2a','l2b','l2c','l3'];
+  const layerVals  = [l1, l2a, l2b, l2c, l3];
+  const layerExtra = [
+    { E: E_proto },
+    { Ee: E_l2a * e_val },
+    {},
+    {},
+    {}
+  ];
+  layerIds.forEach((id, i) => {
+    const el = document.getElementById(id);
+    el.textContent = layerVals[i].toFixed(1);
+    el.className = 'layer-score';
+    el.style.color = layerColor(layerVals[i], layerKeys[i], layerExtra[i]);
+  });
+
+  const c1  = layerColor(l1,  'l1',  { E: E_proto });
+  const c2a = layerColor(l2a, 'l2a', { Ee: E_l2a * e_val });
+  const c2b = layerColor(l2b, 'l2b', {});
+  const c2c = layerColor(l2c, 'l2c', {});
+  const c3  = layerColor(l3,  'l3',  {});
+
+  document.getElementById('formulaRow').innerHTML =
+    `(<span style="color:${c1}">${l1.toFixed(1)}</span> + ` +
+    `<span style="color:${c2a}">${l2a.toFixed(1)}</span> + ` +
+    `<span style="color:${c2b}">${l2b.toFixed(1)}</span> + ` +
+    `<span style="color:${c2c}">${l2c.toFixed(1)}</span> + ` +
+    `<span style="color:${c3}">${l3.toFixed(1)}</span>) × ` +
+    `<span>${M.toFixed(2)}</span> = ` +
+    `<span>${rawScore.toFixed(2)}</span> / 118 × 100 = <strong style="color:${color}">${score}</strong>`;
+
+  const badge     = document.getElementById('riskBadge');
+  const desc      = document.getElementById('riskDesc');
+  const baseScore = Math.min(100, Math.round((rawSum / RISK_MAX) * 100));
+  const mDriven   = score >= 30 && baseScore < 30;
+
+  let descText = '';
+  if (score >= 70) {
+    badge.className = 'risk-badge risk-HIGH'; badge.textContent = 'High Risk';
+    if (l1 >= 6)
+      descText = `Deprecated TLS version or static RSA key exchange (no PFS) detected. This is a direct target for HNDL attacks — upgrade to TLS 1.3 immediately.`;
+    else if (l2a >= 20)
+      descText = `RSA key exchange is exposed on the public internet. Shor's algorithm can decrypt all past sessions. Immediate PQC migration is required.`;
+    else
+      descText = `Multiple risk factors have accumulated to a high-risk state. A full review of cryptographic parameters and PQC migration is needed.`;
+  } else if (score >= 30) {
+    badge.className = 'risk-badge risk-MID'; badge.textContent = 'Medium Risk';
+    if (mDriven)
+      descText = `Cryptographic parameters alone yield a score of ${baseScore} (Low Risk), but the HNDL threat horizon h=${h} yr applies M=${M.toFixed(2)}, pushing the score into Medium Risk. Consider PQC migration if long-term confidentiality is required.`;
+    else if (l2a > 0 && l1 === 0)
+      descText = `RSA/ECDHE key exchange is vulnerable to Shor's algorithm. PFS is in place, but key exchange will be exposed once a quantum computer emerges. A phased PQC migration is recommended.`;
+    else if (l1 > 0 && l1 < 6)
+      descText = `TLS 1.2 is in use. Upgrading to TLS 1.3 will eliminate the L1 risk.`;
+    else
+      descText = `Residual risk factors remain. Refer to the recommendations below.`;
+  } else {
+    badge.className = 'risk-badge risk-LOW'; badge.textContent = 'Low Risk';
+    if (h >= 15)
+      descText = `Current cryptographic parameters are sound. However, with a high HNDL threat horizon (h=${h} yr), consider proactive PQC adoption for long-term confidential data.`;
+    else
+      descText = `The current TLS connection is relatively safe against quantum threats.`;
+  }
+  desc.textContent = descText;
+
+  // ── Recommendations ───────────────────────────────────────────────
+  const advice = [];
+  if (l1 > 0 && (tlsVer === '1.0' || tlsVer === '1.1'))
+    advice.push('Deprecate TLS 1.0/1.1 immediately and upgrade to TLS 1.3.');
+  if (l1 > 0 && tlsVer === '1.2-rsa')
+    advice.push('TLS 1.2 with RSA key exchange has no forward secrecy. Migrate to ECDHE or PQC Hybrid.');
+  if (l2a > 0 && !tlsVer.startsWith('1.3'))
+    advice.push('Replace legacy key exchange (RSA/ECDHE) with ML-KEM-768 hybrid to achieve L2a = 0.');
+  if (l2b > 0)
+    advice.push('Replace AES-128 with AES-256 to eliminate Grover attack exposure (L2b).');
+  if (l2c > 0)
+    advice.push('PQC Level-1 algorithm (ML-KEM-512) should be upgraded to Level-3+ (ML-KEM-768).');
+  if (l3 >= 4)
+    advice.push('Certificate is expired or has fewer than 30 days remaining. Renew immediately.');
+  if (h >= 15)
+    advice.push('High HNDL threat horizon detected. Organizations handling long-term confidential data should prioritize immediate PQC migration.');
+  if (advice.length === 0)
+    advice.push('No immediate recommendations for the current parameter set.');
+
+  const ul = document.getElementById('adviceList');
+  ul.innerHTML = advice.map(a => `<li>${a}</li>`).join('');
+
+  // ── Dynamic input badges ──────────────────────────────────────────
+  function tag(name, cls) {
+    return `<span class="ltag ltag-${cls}">${name}</span>`;
+  }
+  function putBadges(id, html) {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = html;
+  }
+
+  putBadges('ib-tlsVer',
+    (l1  > 0 ? tag('L1',  'l1')  : '') +
+    (l2a > 0 ? tag('L2a', 'l2a') : '')
+  );
+
+  putBadges('ib-cipher', l2b > 0 ? tag('L2b', 'l2b') : '');
+
+  putBadges('ib-pqcKex',
+    (tlsVer === '1.3' && pqcKex !== 'none' && l1 > 0 ? tag('L1',  'l1')  : '') +
+    (l2c > 0                                          ? tag('L2c', 'l2c') : '')
+  );
+
+  putBadges('ib-connType', l2a > 0 ? tag('L2a', 'l2a') : '');
+
+  putBadges('ib-cert', l3 > 0 ? tag('L3', 'l3') : '');
+
+  putBadges('ib-hndl', tag('M = ' + M.toFixed(2), 'm'));
+
+  putBadges('ib-mL1',  l1  > 0 ? tag('m = ' + mL1,  'l1')  : '');
+  putBadges('ib-mL2a', l2a > 0 ? tag('m = ' + mL2a, 'l2a') : '');
+  putBadges('ib-mL2b', l2b > 0 ? tag('m = ' + mL2b, 'l2b') : '');
+  putBadges('ib-mL2c', l2c > 0 ? tag('m = ' + mL2c, 'l2c') : '');
+
+  putBadges('ib-pqcL1', l2c > 0 ? tag('L2c', 'l2c') : '');
+}
+
+function syncPqcKex() {
+  const tlsVer   = document.getElementById('tlsVer').value;
+  const pqcKexEl = document.getElementById('pqcKex');
+  const enabled  = tlsVer === '1.3';
+  pqcKexEl.disabled = !enabled;
+  if (!enabled) pqcKexEl.value = 'none';
+}
+
+// init
+syncPqcKex();
+updateCertDays();
+calc();
+</script>
+</body>
+</html>
